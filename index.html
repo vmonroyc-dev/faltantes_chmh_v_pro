@@ -117,6 +117,9 @@ const STATE = {
     cambioPassConfirm: '',
     cambioPassError: '',
     cambioPassOk: '',
+    // Filtros admin
+    filtroFechaDesde: '',
+    filtroFechaHasta: '',
     // Búsqueda
     search: '',
     searchResults: [],
@@ -288,11 +291,27 @@ function renderReporte() {
 
 // ========== ADMIN ==========
 function renderAdmin() {
-    const reportes = STATE.filtroServicio === 'todos'
-        ? STATE.reportes
-        : STATE.reportes.filter(r => r.servicio === STATE.filtroServicio);
-    const servicios = [...new Set(STATE.reportes.map(r => r.servicio).filter(Boolean))];
+    // Aplicar filtros
+    let reportesFiltrados = STATE.reportes;
+    if (STATE.filtroServicio !== 'todos') {
+        reportesFiltrados = reportesFiltrados.filter(r => r.servicio === STATE.filtroServicio);
+    }
+    if (STATE.filtroFechaDesde) {
+        reportesFiltrados = reportesFiltrados.filter(r => {
+            const f = r.fecha ? new Date(r.fecha).toISOString().split('T')[0] : '';
+            return f >= STATE.filtroFechaDesde;
+        });
+    }
+    if (STATE.filtroFechaHasta) {
+        reportesFiltrados = reportesFiltrados.filter(r => {
+            const f = r.fecha ? new Date(r.fecha).toISOString().split('T')[0] : '';
+            return f <= STATE.filtroFechaHasta;
+        });
+    }
+
+    const servicios    = [...new Set(STATE.reportes.map(r => r.servicio).filter(Boolean))];
     const esSuperAdmin = STATE.currentUser?.rol === 'superadmin';
+    const totalItems   = reportesFiltrados.reduce((a,r) => a + (r.items||[]).length, 0);
 
     return `
     <div class="min-h-screen bg-gray-50 fade-in">
@@ -304,12 +323,9 @@ function renderAdmin() {
                     <div class="text-xs text-blue-300">👤 ${STATE.currentUser?.user || ''}</div>
                 </div>
             </div>
-            <div class="flex gap-2">
-                <button onclick="recargar()" class="bg-blue-600 px-3 py-1.5 rounded-lg text-sm hover:bg-blue-500">
-                    ${STATE.loading ? '<span class="spinner"></span>' : '🔄'}
-                </button>
-                <button onclick="exportarPDF()" class="bg-green-600 px-3 py-1.5 rounded-lg text-sm hover:bg-green-500">📄 PDF</button>
-            </div>
+            <button onclick="recargar()" class="bg-blue-600 px-3 py-1.5 rounded-lg text-sm hover:bg-blue-500">
+                ${STATE.loading ? '<span class="spinner"></span>' : '🔄'}
+            </button>
         </div>
 
         <!-- TABS -->
@@ -330,36 +346,70 @@ function renderAdmin() {
             <!-- Stats -->
             <div class="grid grid-cols-3 gap-3 mb-4">
                 <div class="bg-white rounded-xl p-3 shadow-sm text-center">
-                    <div class="text-2xl font-bold text-blue-700">${STATE.reportes.length}</div>
+                    <div class="text-2xl font-bold text-blue-700">${reportesFiltrados.length}</div>
                     <div class="text-xs text-gray-500">Reportes</div>
                 </div>
                 <div class="bg-white rounded-xl p-3 shadow-sm text-center">
-                    <div class="text-2xl font-bold text-green-700">${servicios.length}</div>
+                    <div class="text-2xl font-bold text-green-700">${[...new Set(reportesFiltrados.map(r=>r.servicio).filter(Boolean))].length}</div>
                     <div class="text-xs text-gray-500">Servicios</div>
                 </div>
                 <div class="bg-white rounded-xl p-3 shadow-sm text-center">
-                    <div class="text-2xl font-bold text-orange-700">${STATE.reportes.reduce((a,r) => a + (r.items||[]).length, 0)}</div>
+                    <div class="text-2xl font-bold text-orange-700">${totalItems}</div>
                     <div class="text-xs text-gray-500">Faltantes</div>
                 </div>
             </div>
-            <!-- Filtro -->
-            <div class="bg-white rounded-xl p-3 shadow-sm mb-4">
+
+            <!-- Filtros -->
+            <div class="bg-white rounded-xl p-4 shadow-sm mb-4 space-y-3">
+                <h3 class="text-sm font-bold text-gray-600">🔍 Filtros</h3>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-xs text-gray-500">Desde</label>
+                        <input type="date" value="${STATE.filtroFechaDesde}"
+                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+                            onchange="STATE.filtroFechaDesde=this.value; render()">
+                    </div>
+                    <div>
+                        <label class="text-xs text-gray-500">Hasta</label>
+                        <input type="date" value="${STATE.filtroFechaHasta}"
+                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mt-1"
+                            onchange="STATE.filtroFechaHasta=this.value; render()">
+                    </div>
+                </div>
                 <select class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                     onchange="STATE.filtroServicio=this.value; render()">
                     <option value="todos" ${STATE.filtroServicio==='todos'?'selected':''}>Todos los servicios</option>
                     ${servicios.map(s => `<option value="${s}" ${STATE.filtroServicio===s?'selected':''}>${s}</option>`).join('')}
                 </select>
+                <div class="flex gap-2">
+                    <button onclick="limpiarFiltros()" class="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50">
+                        ✕ Limpiar filtros
+                    </button>
+                    <button onclick="exportarHoyPDF()" class="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+                        📅 Reporte del día
+                    </button>
+                </div>
+                ${totalItems > 0 ? `
+                <div class="grid grid-cols-2 gap-2 pt-1 border-t border-gray-100">
+                    <button onclick="exportarPDF()" class="py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">
+                        📄 Exportar PDF
+                    </button>
+                    <button onclick="exportarExcel()" class="py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700">
+                        📊 Exportar Excel
+                    </button>
+                </div>` : ''}
             </div>
+
             <!-- Lista de reportes -->
             ${STATE.loading ? '<div class="text-center py-8"><span class="spinner"></span></div>' :
-              reportes.length === 0 ? '<div class="text-center py-12 text-gray-400"><div class="text-4xl mb-3">📋</div><p>No hay reportes</p></div>' :
-              reportes.map((r, i) => `
+              reportesFiltrados.length === 0 ? '<div class="text-center py-12 text-gray-400"><div class="text-4xl mb-3">📋</div><p>No hay reportes con los filtros seleccionados</p></div>' :
+              reportesFiltrados.map((r, i) => `
             <div class="bg-white rounded-xl shadow-sm mb-3 overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
                 onclick="toggleReporte(${i})">
                 <div class="p-4 flex items-center justify-between">
                     <div>
                         <div class="font-bold text-gray-800">${r.servicio || 'Sin servicio'}</div>
-                        <div class="text-sm text-gray-500">${r.fecha || ''} · ${(r.items||[]).length} faltante(s)</div>
+                        <div class="text-sm text-gray-500">${r.fecha ? new Date(r.fecha).toLocaleDateString('es-MX') : ''} · ${(r.items||[]).length} faltante(s)</div>
                         ${r.jefeServicio ? `<div class="text-xs text-gray-400">${r.jefeServicio}</div>` : ''}
                     </div>
                     <div class="text-gray-400 text-xl">${STATE.selected===i ? '▲' : '▼'}</div>
@@ -368,9 +418,9 @@ function renderAdmin() {
                 <div class="border-t border-gray-100 p-4 bg-gray-50">
                     ${(r.items||[]).map(item => `
                     <div class="flex items-start gap-2 py-2 border-b border-gray-100 last:border-0">
-                        <span class="text-xs px-2 py-0.5 rounded-full ${item.tipo==='medicamento'?'bg-blue-100 text-blue-700':'bg-green-100 text-green-700'}">${item.tipo==='medicamento'?'Med':'Ins'}</span>
+                        <span class="text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${item.tipo==='medicamento'?'bg-blue-100 text-blue-700':'bg-green-100 text-green-700'}">${item.tipo==='medicamento'?'Med':'Ins'}</span>
                         <div>
-                            <div class="text-sm text-gray-800">${item.descripcion ? item.descripcion.split('\\n')[0] : ''}</div>
+                            <div class="text-sm text-gray-800">${item.descripcion ? item.descripcion.split('\n')[0] : ''}</div>
                             <div class="text-xs text-gray-400">${item.clave}</div>
                             ${item.obs ? `<div class="text-xs text-blue-600 mt-1">📝 ${item.obs}</div>` : ''}
                         </div>
@@ -378,6 +428,8 @@ function renderAdmin() {
                 </div>` : ''}
             </div>`).join('')}
         ` : `
+
+            <!-- TAB USUARIOS -->
 
             <!-- TAB USUARIOS -->
             <!-- Cambiar contraseña propia -->
@@ -738,42 +790,138 @@ function toggleReporte(i) {
     render();
 }
 
+function getReportesFiltrados() {
+    let lista = STATE.reportes;
+    if (STATE.filtroServicio !== 'todos') lista = lista.filter(r => r.servicio === STATE.filtroServicio);
+    if (STATE.filtroFechaDesde) lista = lista.filter(r => {
+        const f = r.fecha ? new Date(r.fecha).toISOString().split('T')[0] : '';
+        return f >= STATE.filtroFechaDesde;
+    });
+    if (STATE.filtroFechaHasta) lista = lista.filter(r => {
+        const f = r.fecha ? new Date(r.fecha).toISOString().split('T')[0] : '';
+        return f <= STATE.filtroFechaHasta;
+    });
+    return lista;
+}
+
+function limpiarFiltros() {
+    STATE.filtroServicio   = 'todos';
+    STATE.filtroFechaDesde = '';
+    STATE.filtroFechaHasta = '';
+    render();
+}
+
+function exportarHoyPDF() {
+    const hoy = new Date().toISOString().split('T')[0];
+    STATE.filtroFechaDesde = hoy;
+    STATE.filtroFechaHasta = hoy;
+    STATE.filtroServicio   = 'todos';
+    render();
+    setTimeout(() => exportarPDF(), 100);
+}
+
 function exportarPDF() {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    
+    const doc       = new jsPDF({ orientation: 'landscape' });
+    const reportes  = getReportesFiltrados();
+
+    if (reportes.length === 0) { alert('No hay reportes con los filtros seleccionados.'); return; }
+
+    // Título
     doc.setFontSize(16);
-    doc.text('Reporte de Faltantes - CHMH', 14, 20);
-    doc.setFontSize(10);
-    doc.text('Fecha de generación: ' + new Date().toLocaleDateString('es-MX'), 14, 28);
-    
+    doc.setTextColor(30, 64, 175);
+    doc.text('Reporte de Faltantes - CHMH', 14, 18);
+    doc.setFontSize(9);
+    doc.setTextColor(100, 100, 100);
+
+    let subtitulo = 'Generado: ' + new Date().toLocaleString('es-MX');
+    if (STATE.filtroFechaDesde || STATE.filtroFechaHasta)
+        subtitulo += `  |  Período: ${STATE.filtroFechaDesde || '—'} al ${STATE.filtroFechaHasta || '—'}`;
+    if (STATE.filtroServicio !== 'todos')
+        subtitulo += `  |  Servicio: ${STATE.filtroServicio}`;
+    doc.text(subtitulo, 14, 25);
+
+    // Tabla consolidada — un item por fila
     const rows = [];
-    const reportes = STATE.filtroServicio === 'todos' 
-        ? STATE.reportes 
-        : STATE.reportes.filter(r => r.servicio === STATE.filtroServicio);
-    
     reportes.forEach(r => {
+        const fecha = r.fecha ? new Date(r.fecha).toLocaleDateString('es-MX') : '';
         (r.items || []).forEach(item => {
             rows.push([
-                r.fecha || '',
+                fecha,
                 r.servicio || '',
+                r.jefeServicio || '',
                 item.clave || '',
-                (item.descripcion || '').split('\n')[0].substring(0, 60),
-                item.tipo || '',
+                (item.descripcion || '').split('\n')[0].substring(0, 70),
+                item.tipo === 'medicamento' ? 'Medicamento' : 'Insumo',
                 item.obs || ''
             ]);
         });
     });
 
     doc.autoTable({
-        head: [['Fecha', 'Servicio', 'Clave', 'Descripción', 'Tipo', 'Obs.']],
+        head: [['Fecha', 'Servicio', 'Jefe', 'Clave', 'Descripción', 'Tipo', 'Observación']],
         body: rows,
-        startY: 35,
-        styles: { fontSize: 7 },
-        headStyles: { fillColor: [30, 64, 175] }
+        startY: 30,
+        styles:     { fontSize: 7, cellPadding: 2 },
+        headStyles: { fillColor: [30, 64, 175], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [240, 245, 255] },
+        columnStyles: {
+            0: { cellWidth: 22 },
+            1: { cellWidth: 38 },
+            2: { cellWidth: 30 },
+            3: { cellWidth: 32 },
+            4: { cellWidth: 80 },
+            5: { cellWidth: 24 },
+            6: { cellWidth: 30 }
+        }
     });
 
-    doc.save('faltantes-chmh-' + new Date().toISOString().split('T')[0] + '.pdf');
+    // Pie de página
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7);
+        doc.setTextColor(150);
+        doc.text(`Página ${i} de ${pageCount}  |  CHMH Control de Faltantes`, 14, doc.internal.pageSize.height - 8);
+    }
+
+    const fecha = new Date().toISOString().split('T')[0];
+    doc.save(`faltantes-chmh-${fecha}.pdf`);
+}
+
+function exportarExcel() {
+    const reportes = getReportesFiltrados();
+    if (reportes.length === 0) { alert('No hay reportes con los filtros seleccionados.'); return; }
+
+    // Construir CSV con BOM para que Excel abra bien con acentos
+    const BOM = '\uFEFF';
+    const cols = ['Fecha', 'Servicio', 'Jefe de Servicio', 'Clave', 'Descripción', 'Presentación', 'Tipo', 'Observación'];
+    const escape = v => `"${String(v).replace(/"/g, '""')}"`;
+
+    let csv = BOM + cols.map(escape).join(',') + '\n';
+    reportes.forEach(r => {
+        const fecha = r.fecha ? new Date(r.fecha).toLocaleDateString('es-MX') : '';
+        (r.items || []).forEach(item => {
+            csv += [
+                fecha,
+                r.servicio || '',
+                r.jefeServicio || '',
+                item.clave || '',
+                (item.descripcion || '').split('\n')[0],
+                item.presentacion || '',
+                item.tipo === 'medicamento' ? 'Medicamento' : 'Insumo',
+                item.obs || ''
+            ].map(escape).join(',') + '\n';
+        });
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `faltantes-chmh-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
 }
 
 // ========== INIT ==========
